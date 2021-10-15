@@ -1,0 +1,570 @@
+---
+title: "Investigation of the salary, promotion, and hiring process in Black Saber Software"
+subtitle: "Analysis based on data visualizations and models"
+author: "Report prepared for Black Saber Software by Mochi Group"
+date: 2021-04-21
+lang: "en"
+output:
+  pdf_document:
+    template: report.tex
+    toc: true
+    toc_depth: 2
+titlepage: true
+titlepage-color: "6C3082"
+titlepage-text-color: "FFFFFF"
+titlepage-rule-color: "FFFFFF"
+titlepage-rule-height: 2
+---
+
+```{r, message = FALSE, echo=FALSE}
+library(tidyverse)
+library(lme4)
+library(mgcv)
+# read in the data
+employees <- read.csv("/Users/bella/Desktop/STA303/Final Project/STA303 Final Project/data/black-saber-current-employees.csv")
+final_hires <- read.csv("/Users/bella/Desktop/STA303/Final Project/STA303 Final Project/data/final-hires-newgrad_2020.csv")
+phase1 <- read.csv("/Users/bella/Desktop/STA303/Final Project/STA303 Final Project/data/phase1-new-grad-applicants-2020.csv")
+phase2 <- read.csv("/Users/bella/Desktop/STA303/Final Project/STA303 Final Project/data/phase2-new-grad-applicants-2020.csv")
+phase3 <- read.csv("/Users/bella/Desktop/STA303/Final Project/STA303 Final Project/data/phase3-new-grad-applicants-2020.csv")
+```
+
+\newpage
+# Excutive summary
+## Backgroud & Aim
+Recently, people outside and from the Black Saber Software company have concerns about their hiring and remuneration process. The company's data includes the data about salary and promotion for their current staff and the hiring data for their new grad program. The purpose of this report is to explore if the salary, promotion, and hiring process are fair and the potential issues there might be. 
+
+The data for their current employees contains information from 607 employees in the different financial quarters, so there are 6906 observations in total. The hiring process includes three phases, where the first two phases are done by the AI service. After the interviews in phase three, ten candidates are hired from the 613 candidates.
+
+## Key Findings
+The results of the analysis are summarized below.
+    
+* For the same positions in the company, male employees seem to have a higher salary than female employees in general based on the plot in Figure 3 below.      
+  
+* The average salary for the teams such as Data, Legal and financial, and Software is much higher (around two thousand dollars) than some teams like Client Services and People and talent. The promotion opportunities for employees in teams like Design, Operations, and People and talent also seem to be more than the others.   
+    
+* It is good that the salary raise and promotion are given to those with leadership who exceeds expectations for their levels, but the company could also take notice of the average productivity of employees.   
+    
+* For the hiring process, the AI service seems to be fair in general in the first two phases. However, the AI tends to give higher ratings in leadership presence in phase 2 to the male candidates, which might be an issue.     
+   
+* According to Figure 8 below, there are not many gender differences for those who are rejected in phase 1 to phase 3, which indicates the hiring process, in general, does not show a severe gender inequality problem.   
+   
+* We notice that in Figure 8, the new grads who are hired are primarily males. We also find that males make up the majority in every position in the company, so there might be a gender unbalance issue that should be considered.
+
+
+## Limitations
+  
+* The data for employees only contain the information for the current staff, so some of the problems could not be analyzed in the long run.   
+   
+* The data for employees contains limited information. Variables such as ethnicity or race are not collected, so some of these potential issues cannot detect.   
+    
+* The data size for the hiring process is relatively small, especially for phase 3 and the final hire. The model I fit using these data could not provide very accurate and precise results.
+
+The important result and findings are shown in the following figures.
+```{r, echo=FALSE, out.width="80%", out.height="80%"}
+knitr::include_graphics("Figure 3.pdf")
+```
+
+```{r, echo=FALSE, out.width="80%", out.height="80%"}
+knitr::include_graphics("Figure 8.pdf")
+```
+
+\newpage
+# Technical report
+## Introduction
+
+Black Saber Software have around six hundred employees currently, and they hired 10 new grads from six hundred candidates. This report will mainly focus on the salary, promotion, and the hiring process in Black Saber Software. The hiring process contains three phases, where the first two phases were depended on the AI The specific research questions are listed below. All the analysis will based on visualizations and model results.
+
+I will analysis the provided data from five different perspectives, including salary, raise, promotion, the AI selection pipeline, and the final stage of hiring process. Every specific research question will be explained separately and will be started as making assumptions based on the visualization fo the data. Then a statistical model will be chosen to verify our assumptions. To explain the model results, I will focus on the estimates of the parameters and the confidence interval which can be use to determine the significance of the effects. After fitting the models, appropriate conclusions will be made for each research question.
+
+The overall conclusions and discussion for the salary, promotion, and hiring process are presented in the discussion section, it also includes the strengths and limitations of these analysis. Finally, the consultant information and the ethical conduct of this reported can be found at the end.
+
+
+### Research questions
+
+* How does the employees' salary related to gender, productivity, and teams? 
+* Which factors may have an impact on raise?
+* Is the promotion process based on employees' talent and value to the company such as productivity and leadership?
+* Does the AI-automated hiring pipeline unbiased?
+* How the HR decides the final hire for applicants who got into the last phase of the hiring process, and whether the final hires achieve gender balance?
+
+## I. Analysis of the effect on salary caused by factors such as gender, productivity, and teams
+### Data Wrangling and Methods
+```{r,include=FALSE}
+# change the type of some variables
+employees$salary <- as.numeric(gsub("[$,]", "", employees$salary))
+employees$employee_id <- as.character(employees$employee_id)
+col <- c("gender","team","role_seniority","leadership_for_level")
+employees[col] <- lapply(employees[col], factor)
+# relevel the levels of role_senoiorty
+employees$role_seniority <- factor(employees$role_seniority,
+                                   c("Entry-level","Junior I","Junior II",
+                                     "Senior I","Senior II","Senior III",
+                                     "Manager","Director","Vice president"))
+
+```
+
+The data for the current employees contains the information for the whole duration of their employment. Each row includes the employees' ID, gender, productivity, and other information at a specific financial quarter. To analyze the relationship between salary and other variables, some basic data manipulation is done by changing the type of the variables. For example, the salary is modified from character to numeric type without dollar signs and decimal separators. Other variables such as gender are turned into factors.
+
+I am interested in whether the salary is correlated with employees' productivity, their teams, and gender. Thus, I will create three visualizations for this data to explore the potential correlations. Since salary is a continuous numeric variable, it would be appropriate to fit a linear model. However, as we notice that employees' information is repeatedly recorded based on different financial quarters, I will treat employees' IDs as a random intercept. Besides, we know that salary is correlated with role seniority, so the second model I propose will include an additional random variable. The final model is selected based on the likelihood ratio test, and the model's estimates and confidence interval will be discussed.
+
+### Results
+In Figure 1, we can see how employees' salary related to their productivity. One of my biggest concerns is that the wages for those with very high productivity are meager in general. Among the employees with high productivity, the salary for males seems to be higher than for females overall. Also, for employees who have the highest salary, which is almost $160,000, males' salary is still higher than females. 
+  
+```{r,echo=FALSE}
+# create a visualisation
+# Prodictivity vs. salary
+ggplot(data = employees, aes(x = productivity,y=salary, colour = gender)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set3")+
+  labs(title = 'Figure 1: The relationship between productivity and salary',
+       subtitle = 'Distinguished by gender',
+       x = 'Productivity',
+       y = 'Salary',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+According to Figure 2, the mean salary for most teams is around \$40,000. However, there are still some differences we can see from the plot. For instance, the salary for employees in the legal and financial team tends to be higher than other teams and has the largest range. The median salary for employees in the client services team is the lowest, under \$40,000. 
+
+```{r,echo=FALSE}
+# create a visualisation
+# team vs. salary
+ggplot(data = employees, aes(x = team,y=salary,fill = team)) +
+  geom_boxplot() +
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set3")+
+  labs(title = 'Figure 2: Salary distribution across different teams',
+       x = 'Team',
+       y = 'Salary',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software")) +
+  theme(axis.text.x = element_text(angle = 30))
+```
+
+We know that the salary is higher if someone's seniority is higher. In Figure 3, we can see that there is a huge wage gap between manager and director. It is also noticeable that within each role seniority, male employees' salary is obviously higher than female employees.
+
+```{r,echo=FALSE}
+# create a visualisation
+# role_seniority vs. salary by gender
+ggplot(data = employees, aes(x = role_seniority,y=salary,fill = gender)) +
+  geom_boxplot() +
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set3")+
+  labs(title = 'Figure 3: Salary distribution across different role seniority',
+       subtitle = 'Distinguished by gender',
+       x = 'Role Seniority',
+       y = 'Salary',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+ggsave("Figure 3.pdf", width = 7, height = 4)
+```
+
+Based on the visualizations above, we may consider fitting a model for salary using variables such as gender and productivity. Since each employee may have several records for different years and financial quarters in the original data set, I include their ID as a random intercept term. The first model I fit is $salary = \mu+gender+team+leadership+productivity+(1|employeeID)+\epsilon$, where $\mu$ is the grand mean of salary and $\epsilon$ is the random error. However, as we see in Figure 3, the salary is strongly correlated with role seniority. Then I fit a second model with an additional random intercept on the role seniority, and it is $salary = \mu+gender+team+leadership+productivity+(1|employeeID)+(1|role.seniority)+\epsilon$ (Model 1). 
+
+After doing the likelihood ratio test for these two models, I conclude that the second model is better due to a very small p-value. In this model, the base is a male employee who is in the client services team and with appropriate leadership for his level. According to Table 1, if an employee is a female, then her salary is very likely to decrease by about $2238.75. However, if an employee is in Data, Legal and financial, or Software team, his/her salary is very likely to increase by at least two thousand dollars. The estimates of women, and these three teams are significant, because their confidence interval do not contain zero, which means we have evidence to reject the hypotheses that these variable do not have any effect. It is strange that for those who need to improve their leadership, the salary will slightly increase, and it is also a significant effect. Also, we can see that productivity has no effect on salary.
+
+```{r,include=FALSE}
+mod_1 <- lme4::lmer(salary~gender+team+leadership_for_level+
+              productivity+(1|employee_id),data=employees)
+#add another random intercept
+mod_2 <- lme4::lmer(salary~gender+team+leadership_for_level+
+              productivity+(1|employee_id)+(1|role_seniority),data=employees)
+# lmtest::lrtest(mod_1, mod_2)
+est1 <- format(round(summary(mod_2)$coeff[,1],2),nsmall=2) #round estimates to 2 decimal places
+con1 <- format(round(confint(mod_2),2),nsmall=2)[4:16,] #round confidence interval
+con_pretty <- str_c("(",trimws(con1[,1]),", ",con1[,2],")")
+mod_2_table <- cbind(est1,con_pretty) #combine the estimates and CI
+rownames(mod_2_table) <- c("Grand mean","Gender:prefer not to say","Gender:Woman",
+                           "Team:Data","Team:Design","Team:Legal and financial",
+                           "Team: Marketing and sales","Team:Operations",
+                           "Team:People and talent","Team:Software",
+                           "Leadership:Exceeds expectations",
+                           "Leadership:Needs improvement","Productivity")
+colnames(mod_2_table) <- c("Estimate","95% CI")
+```
+
+
+```{r,echo=FALSE}
+knitr::kable(mod_2_table, caption = "Summary of Model 1") 
+```
+
+### Conclusion
+In summary, I would suggest the company to adjust its payroll system since the salary is not balanced within genders and teams. It is clear that the average salary for males is much higher than for females, which could be a serious problem. More specifically, the average salary for females is $2239 less than the average salary for males. Also, the salary between different teams should not vary too much. The employees in Data, Legal and financial, and Software teams seem to have more than two thousand dollars than the employees in the Client services team. It might be a little unfair for those who have very high productivity to have the same or even less wages than those with low productivity. 
+
+## II. Analysis of the factors that have an impact on raise
+### Data Wrangling and Methods
+```{r,include=FALSE}
+# calculate number of promotion for each employee
+employees <- employees %>%
+  group_by(employee_id) %>%
+  mutate(promotion = n_distinct(role_seniority) - 1) 
+promotion <- employees %>%
+  select(employee_id, promotion) %>%
+  distinct(employee_id,promotion)
+#calculate the average productivity for each employee
+avg_productivity <- employees %>% group_by(employee_id) %>%
+  summarise(mean(productivity))
+#calculate the salary increase for each employee
+salary_max<- employees %>% group_by(employee_id) %>% summarise(max(salary))
+salary_min <- employees %>% group_by(employee_id) %>% summarise(min(salary))
+salary_inc <- inner_join(salary_max,salary_min,by="employee_id")
+salary_inc$raise <- salary_inc$`max(salary)`-salary_inc$`min(salary)`
+
+#Re-join all new features with unique employee ID: 
+employees_new <- inner_join(avg_productivity,promotion,by="employee_id")
+employees_new <- inner_join(employees_new,salary_inc,by="employee_id")
+employees_new <- employees_new[,c(1,2,3,6)]
+employees_new$salary_raise <- employees_new$raise
+employees_new$avg_productivity <- employees_new$`mean(productivity)`
+employees_new <- employees_new[,c(1,3,5,6)]
+
+other <- employees[,c(1:3, 6)]
+leadership <- other %>% 
+  group_by(employee_id) %>% count(leadership_for_level) %>%
+  pivot_wider(names_from = leadership_for_level, values_from = n) 
+leadership[is.na(leadership)] <- 0
+
+other <- other[,c(1:3)]
+other <- distinct(other)
+
+new_emp <- inner_join(employees_new, leadership, by="employee_id")
+new_emp <- inner_join(new_emp, other, by="employee_id")
+new_emp$gender <- as.factor(new_emp$gender)
+new_emp$team <- as.factor(new_emp$team)
+
+new_emp$leadership_appropriate <- new_emp$`Appropriate for level`
+new_emp$leadership_needsimprov <- new_emp$`Needs improvement`
+new_emp$leadership_exceeds <- new_emp$`Exceeds expectations`
+new_emp <- new_emp[,-c(5:7)]
+```
+Instead of considering salary for employees, I am also interested in the raise. To calculate the raise, I use the maximum salary of an employee got from all financial quarters and the minimum salary to get the differences. I also summarize the average productivity for each employee, and the number of times their leadership quality to be assessed as each level. The new data set contains only one row for each employee and includes their increase in wages, average productivity, the teams they belong to, and the leadership levels.
+
+Since we know there is a gender difference in salary, the raise may also have a gender inequality issue. Hence, the data visualization will illustrate how the amount of raise is different across different gender groups. Then, I will still fit a linear mixed model for the salary raise. Based on the result from the last research question, we know salary may depend on teams. Thus, I will treat team as a random intercept variable in this case. Besides, the new data set I construct only contains one row for each employee, so we do not need the employee's ID to be a random term.
+
+
+### Results
+Figure 4 shows that the number of employees who had an increase in salary in the previous financial quarters until the end of 2020. Most of the employees never had a raise, but males made up a large proportion of those who had a raise. Thus, we need to verify if the increase in wages is correlated with gender by fitting a model.
+
+```{r,echo=FALSE}
+# create a visualisation
+# salary raise vs.
+ggplot(data = new_emp, aes(x = salary_raise, fill=gender)) +
+  geom_histogram(bins = 15) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3")+
+  labs(title = 'Figure 4: Salary increase for employees',
+       subtitle = 'Counted by gender',
+       x = 'Total Raise',
+       y = 'Number of Employees',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+
+In this case, I am still using a linear mixed model with a random intercept on teams. The model is $salary = \mu+gender+leadership:Exceed+AvgProductivity+(1|team)+\epsilon$ (Model 2), where $\mu$ is the grand mean of increase in salary and $\epsilon$ is the random error. The following Table 2 gives a summary of this model, and we know that the grand mean value for salary raise is about $10,695. From the output, I notice that female employees tend to have less than a thousand dollar raise, though this effect is not significant because the confidence interval contains zero. The raise for those who do not want to say their gender has even larger negative effect. It is good to see that if someone's leadership is assessed as exceeds expectation, the salary increases around \$2758, and this effect is significant. The average productivity seem to have a little negative effect, but it is not significant.
+
+```{r, include=FALSE}
+mod_3 <- lme4::lmer(salary_raise ~ gender+leadership_exceeds+avg_productivity+(1|team),
+                      data=new_emp)
+est3 <- format(round(summary(mod_3)$coeff[,1],2),nsmall=2) #round estimates to 2 decimal
+con3 <- format(round(confint(mod_3),2),nsmall=2)[3:7,] #round confidence interval
+con_pretty3 <- str_c("(",trimws(con3[,1]),", ",con3[,2],")")
+mod_3_table <- cbind(est3,con_pretty3) #combine the estimates and CI
+rownames(mod_3_table) <- c("Grand mean","Gender:prefer not to say","Gender:Woman",
+                           "Leadership:Exceeds expectation","Avg Productivity")
+colnames(mod_3_table) <- c("Estimate","95% CI")
+```
+
+```{r,echo=FALSE}
+knitr::kable(mod_3_table, caption = "Summary of Model 2") # Table 2
+```
+### Conclusion
+In sum, there is still a gender inequality problem when it comes to increasing wages. Female employees have about a thousand dollars less in raise than males, and this amount is even larger for those who do not want to say their gender. The company should take a look at the payroll system and hopefully find out the specific issues. It is reasonable to increase wages for employees who have better leadership, and it is also an essential factor to be considered during the promotion process. However, it seems like the raise in salary do not have any relationship with the average productivity of an employee, which I think it may be unfair to those who work really hard and with high efficiency.
+
+## III. Analysis of the promotion process
+### Data Wrangling and Methods
+Promotion is necessary for employees to maintain and increase their productivity, and it have to be fair. From the current employees data, I calculate the number of promotion based on the role seniority from previous financial quarter for each employee. If an employee was at entry level since he/she entered the company, then the count for promotion is zero. 
+
+Since the number of times that an employee was promoted is always a non-negative integer, and the mean and variance of the number of promotions are almost the same, it would be appropriate to use Poisson distribution to fit a model. The first model I propose is a generalized linear model with a random effect on team, and I will decide if this random effect is useful based on its summary. If the random term is unnecessary, then the model is just a generalized linear model using a Poisson distribution. 
+
+
+### Results
+Figure 5 shows the proportion of each gender for each level of promotion, and the red line indicates the middle. For employees who had at least one promotion, males made up larger proportion. Also, the employees who had the largest number of promotion are all male.
+
+```{r,echo=FALSE}
+# create a visualisation
+ggplot(data = new_emp, aes(x = promotion,fill = gender)) +
+  geom_bar(position = "fill") +
+  ylab('Percentage') +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal() +
+  geom_hline(yintercept = 0.5, colour = "red") +
+  labs(title = 'Figure 5: Gender proportion of promotion',
+       subtitle = 'Counted by gender',
+       x = 'Number of Promotion',
+       y = 'Percentage',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+
+I am also interested in whether the promotion can be affected by the productivity of employees. According to Figure 6, the mean average productivity across all promotion levels is around 50. For those who had never been promoted, their average productivity have the largest range. Thus, we may concern that the promotion does not have a relationship or even negative relationship with productivity.
+
+```{r,echo=FALSE}
+new_emp$promotion <- as.factor(new_emp$promotion)
+# create a visualisation
+ggplot(data = new_emp, aes(x = promotion,y=avg_productivity, fill = promotion)) +
+  geom_boxplot() +
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set3")+
+  labs(title = 'Figure 6: Number of Promotion vs. Productivity',
+       subtitle = 'Counted by gender',
+       x = 'Number of Promotion',
+       y = 'Average Productivity',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+
+ The first model I propose to use is $log(E(promotion)) = \mu + gender + AvgProductivity + Leadership:exceeds + (1|team) + \epsilon$, and treat team as a random intercept. However, the variance of this random intercept is very small, 0.003, which indicates that it is unnecessary to add this random intercept term. Thus, the model I choose to use is $log(E(promotion)) = \mu + gender + AvgProductivity + Leadership:exceeds + \epsilon$ (Model 3), where $\mu$ is the grand mean of the number of promotions and $\epsilon$ is the random error. The left hand side of this equation means the log of the average value of promotion.
+
+The following Table 3 provides the summary of Model 3. I take a exponential on the estimates and the confidence intervals because the Poisson regression estimates the log of the mean response. After taking the exponential, the values can be explained as the effect on the average number of promotion. Also, if the confidence interval contains one, then we have no evidence to reject the hypothesis that a variable do not have an effect on the average response value.
+
+The baseline condition in this model is a male employee who is in the client services team. The estimate for the variable woman is less than 1, which means it has a negative effect on the average promotion times. But this effect is relatively small, and the confidence interval contains one, which indicates this effect is not significant. Therefore, there are no obvious gender differences in promotion, which is good. However, Some of the teams, such as Operations and People and talent, seem to have more opportunities to be promoted than the Client services team. Especially for the People and talent team, the effect on the average promotion times is 2.68. I also notice that the average productivity seems to have a slightly negative effect on the promotion due to a less than one estimate value, and this is a problem that the company may want to consider. It is good to see that those with exceed the expected leadership level tend to have more promotions, and this effect is significant since the confidence interval for this estimate does not contain one.
+
+```{r,include=FALSE}
+new_emp$promotion <- as.numeric(new_emp$promotion)
+prom1 <- lme4::glmer(promotion ~ gender+(1|team)+avg_productivity+leadership_exceeds,
+                     family="poisson",data=new_emp)
+#summary(prom1) #team random variance is small, not useful
+
+prom2 <- glm(promotion ~ gender+team+avg_productivity+leadership_exceeds,
+                     family="poisson",data=new_emp)
+summary(prom2)
+
+est_p <- format(round(exp(summary(prom2)$coeff[,1]),2),nsmall=2) #round estimates to 2 decimal
+con_p <- format(round(exp(confint(prom2)),2),nsmall=2) #round confidence interval
+con_pretty_p <- str_c("(",trimws(con_p[,1]),", ",con_p[,2],")")
+prom2_table <- cbind(est_p,con_pretty_p) #combine the estimates and CI
+rownames(prom2_table) <- c("Grand mean","Gender:prefer not to say","Gender:Woman",
+                           "Team:Data", "Team:Design","Team:Legal and financial",
+                           "Team:Marketing and sales","Team:Operations",
+                           "Team:People and talent","Team:Software",
+                           "Avg Productivity","Leadership:Exceeds expectation")
+colnames(prom2_table) <- c("exp(Estimate)","exp(95% CI)")
+```
+
+```{r,echo=FALSE}
+knitr::kable(prom2_table, caption = "Summary of Model 3") # Table 3
+```
+
+### Conclusion
+As a result, I conclude that there is no gender differences in promotion, but there are some effects caused by different teams. The company should think about if the opportunities for employees to be promoted are different across the teams. The baseline is the Client Services team, and it seems like all the other teams have more opportunities to be promoted. However, it is good to see that the leadership level was being considered, since leadership is essential to prove employees' ability.
+
+## IV. Explore the AI-automated hiring pipeline
+### Data Wrangling and Methods
+```{r,include=FALSE}
+#change some variables to factor
+cols1 <- c("team_applied_for","cover_letter","cv","gender")
+phase1[cols1] <- lapply(phase1[cols1], factor)
+phase2[cols1] <- lapply(phase2[cols1], factor)
+
+#aggregate variables from phase 2
+phase3 <- inner_join(phase2,phase3,by="applicant_id")
+#aggregate all variables for final hires
+final_hires <- inner_join(phase3,final_hires,by="applicant_id")
+#aggregate all the data from phase1 and phase2
+phase12 <- left_join(phase1, phase2)
+#aggregate all the data from three phases
+all_phases <- left_join(phase12, phase3)
+
+all_phases$status <- 
+  ifelse(all_phases$applicant_id %in% final_hires$applicant_id, "Hired",
+                            ifelse(all_phases$applicant_id %in% phase3$applicant_id,
+                                   "Rejected in phase 3", 
+                                   ifelse(all_phases$applicant_id %in% phase2$applicant_id,
+                                          "Rejected in phase 2", "Rejected in phase 1")))
+all_phases$status <- as.factor(all_phases$status)
+all_phases$applicant_id <- as.character(all_phases$applicant_id )
+#add a new variable
+phase1$Result <- ifelse(phase1$applicant_id %in% phase2$applicant_id, 'Pass','Fail')
+phase2$Result <- ifelse(phase2$applicant_id %in% phase3$applicant_id, 'Pass','Fail')
+phase3$Result <- ifelse(phase3$applicant_id %in% final_hires$applicant_id, 'Pass','Fail')
+all_phases$Result <- ifelse(all_phases$applicant_id %in%
+                             final_hires$applicant_id,'Hire','Fail')
+```
+
+To analyze the hiring process, I use the data for the first three phases and the final hire. Since each phase contains fewer people than the last phase with different variables of interest, I aggregate all the variables from previous steps to every data set. For example, the phase 2 data will not only contains the ratings based on the pre-recorded video, but also contain the variable such as GPA from phase 1 data. I also add a new variable called "Result" to see if the applicants pass this phase and get into the next. 
+
+The AI auto-graded system can be said to be fair if the rating do not depend on other variables such as gender. The data visualization will illustrate how the rating on leadership is correlated with gender. I will fit two models for phase 1 and 2, the response variable is whether the candidates pass the current phase. Since the response is binary, the model I will use is a generalized linear model with the logit link function. After analyzing the result from these two models, a general conclusion for the AI selection pipeline will be made in the conclusion section.
+
+
+### Results
+Figure 7 shows the AI auto-graded leadership presence score based on applicants' pre-recorded video in phase 2. This is my main concern for the AI selection pipeline. We can see from the bar graph that for candidates with a high rating on leadership presence, male candidates made up a higher portion. Only male candidates got the highest ratings for leadership presence. It makes me wonder if the AI auto-graded process is unbiased.
+
+```{r,echo=FALSE}
+#gender vs. leadership
+ggplot(data = phase2, aes(x = leadership_presence,fill = gender)) +
+  geom_bar(position = "fill") +
+  ylab('Percentage') +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()+
+  geom_hline(yintercept = 0.5,color="red")+
+  labs(title = 'Figure 7: Distribution of leadership precense score',
+       subtitle = 'Counted by gender',
+       x = 'Leadership Presence',
+       y = 'Percentage',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+To explore more about this AI selection process, I fit two models for the phase 1 and phase 2 data set. For phase 1 data, the response variable is whether the candidates passed the AI selection criteria and got into phase 2. Hence, the model I choose is a generalized linear model using the binomial distribution. The model can be expressed as $log(\frac{p}{1-p})=GPA+Gender+Extracurriculars+WorkExperience$ (Model 4), where the left of the equation is the log odds, and $p$ represents the probability that candidates pass phase 1 and get into phase 2. 
+
+Table 4 shows the summary of Model 4. Based on the results, the GPA and work experience are the two significant effects on the final results since their confidence intervals do not contain zero. It is reasonable that the company wants to hire someone with a higher GPA and more work experience. However, I notice that the estimates for the other two gender groups, prefer not to say and woman, tend to have lower log odds than the baseline group (Man). If the log odds decrease, the probability for the candidates to pass phase 1 will also decrease. Thus, there may be a problem that these two gender groups had a lower likelihood to pass this AI auto-selection pipeline, though these effects are very small.
+
+```{r,include=FALSE}
+mod_p1 <- glm(as.factor(Result) ~ gpa+gender+extracurriculars
+             +work_experience, data = phase1, family = binomial(link = "logit"))
+ests <- format(round(summary(mod_p1)$coeff[,1],2),nsmall=2)
+con <- format(round(confint(mod_p1),2),nsmall=2)
+con_pretty <- str_c("(",trimws(con[,1]),", ",con[,2],")")
+mod_p1_table <- cbind(ests,con_pretty)
+rownames(mod_p1_table) <- c("Baseline log odds","GPA","Gender:prefer not to say","Woman","Extracurriculars","Work experience")
+colnames(mod_p1_table) <- c("Estimate","95% CI")
+
+```
+
+```{r,echo=FALSE}
+knitr::kable(mod_p1_table, caption = "Summary of Model 4") # table 4
+```
+
+
+Then I use a second model to evaluate the AI selection pipeline in phase 2. The selection for phase 2 was mainly focus on the four kinds of skills, but I also include the variables from phase 1 in this model. The response variable is still a binary variable indicates whether a candidates pass phase 2 and get into phase 3. The model can be expressed as $log(\frac{p}{1-p})=GPA+Gender+Extracurriculars+WorkExperience+TechicalSkills+WritingSkills+LeadershipPresence+SpeakingSkills$ (Model 5), where the left of the equation is the log odds, and $p$ represents the probability that candidates pass phase 2 and get into phase 3. 
+According to Table 5, the estimates of those four skills have the most significant effect based on their confidence interval, especially the leadership presence has the largest effect on the results. However, as we notice from Figure 7, the candidates who got higher leadership rating are mainly males. Also, the effects for women are still lower than men since men is still a base line group in this model, and the estimate for women is still negative. 
+
+```{r,include=FALSE}
+phase2 <- phase2 %>% filter(gender != "Prefer not to say")
+mod_p2 <- glm(as.factor(Result) ~ gpa+gender+extracurriculars
+             +work_experience+technical_skills+writing_skills+
+               leadership_presence+speaking_skills, 
+             data = phase2, family = binomial(link = "logit"))
+ests2 <- format(round(summary(mod_p2)$coeff[,1],2),nsmall=2)
+con2 <- format(round(confint(mod_p2),2),nsmall=2)
+con_pretty2 <- str_c("(",trimws(con2[,1]),", ",con2[,2],")")
+mod_p2_table <- cbind(ests2,con_pretty2)
+rownames(mod_p2_table) <- c("Baseline log odds","GPA","Woman","Extracurriculars",
+                           "Work experience","Technical skills",
+                           "Writing skills","leadership","speaking skills")
+colnames(mod_p2_table) <- c("Estimate","95% CI")
+
+```
+
+```{r,echo=FALSE}
+knitr::kable(mod_p2_table, caption = "Summary of Model 5") # table 5
+```
+
+### Conclusion
+Overall, the AI auto-graded pipeline is fair in general. In phase 1, candidates with higher GPA and more work experiences are preferred. In phase 2, candidates with better technical, writing, leadership, and speaking skills are preferred, especially the leadership is essential. However, I notice the AI tend to give male candidates higher leadership ratings, and the models for both phases show the other two gender groups tend to have a negative effect on the results.
+
+
+## V. Explore the final stage in hiring and potential issues
+### Data Wrangling and Meth
+After analyzing the AI-automated process, we should consider if the final stage of the hiring process is reasonable. The data I use is the phase 3 and final hire data. The phase 3 data only contains two interviewers' rating, but I also add all the other variables from phase 1 and phase 2 for candidates entered phase 3. I also create a new data set containing all the information for all the applicants and a new variable called "status" to see if an applicant was rejected at a certain phase to this applicant was hired at the end. 
+
+I will use similar strategies as the last section to fit a generalized linear model to analyze what factors may affect candidates to be hired at the end. Besides, I will use a bar plot to illustrate the gender distribution for the status of the candidates.
+
+### Results
+
+From Figure 8, we can see that almost 80% of final fires are males, so we need to explore whether gender affects the last phase of the hiring process. 
+
+```{r,echo=FALSE}
+# Gender vs. status
+ggplot(data = all_phases, aes(x = status,fill = gender)) +
+  geom_bar(position = "fill") +
+  ylab('Percentage') +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()+
+  geom_hline(yintercept = 0.5, colour = "red")+
+  labs(title = 'Figure 8: Status of each applicant',
+       subtitle = 'Counted by gender',
+       x = 'Hiring Status',
+       y = 'Percentage',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+ggsave("Figure 8.pdf", width = 7, height = 4)
+```
+
+It is also interesting to see how gender is distributed across all seniority roles from the current employees. In Figure 9, we can conclude that male employees made up of larger proportion among all the positions in the company. Combine the result from Figure 8, I wonder if the hiring process is related to this gender unbalance issue.
+
+```{r,include=FALSE}
+# Gender across all role seniority
+ggplot(data = employees, aes(x = role_seniority,fill = gender)) +
+  geom_bar(position = "fill") +
+  ylab('Percentage') +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()+
+  geom_hline(yintercept = 0.5)+
+  labs(title = 'Figure 9: Gender distribution among role seniority',
+       subtitle = 'Counted by gender',
+       x = 'Role Seniority',
+       y = 'Percentage',
+       caption = str_c("Created by: Peiyu Li, Mochi Group
+                      Source: Black Saber Software "))
+```
+
+The phase 3 data set contains two ratings from two interviewers. The final result is mainly based on these two variables, but when HR makes decisions, all the other variables are taken into account. Thus, the model I fit contains the average interview ratings and the other variables from the previous two phases. The response variable is still a binary variable that indicates if the candidate is hired at the end, so I choose a generalized linear model using the binomial distribution. The model can be expressed as $log(\frac{p}{1-p})=GPA+Gender+Extracurriculars+WorkExperience+TechicalSkills+WritingSkills+LeadershipPresence+SpeakingSkills+AvgRating$ (Model 5), where the left part of the equation is the log odds, and $p$ represents the probability that candidates is hired at the end. 
+
+According to the following summary, GPA, work experiences, and the average interview rating are the main three factors that are positively correlated with the log odds. Thus, if candidates have a higher GPA, more work experience, and a higher interview rating, then the probability that they will be hired will increase. However, we also see that the "gender woman" factor negatively affects the result. We can conclude that the probability for female candidates to be hired is less than the male candidates.
+
+```{r,include=FALSE}
+phase3 <- phase3 %>%
+  mutate(avg_rating = (interviewer_rating_1+interviewer_rating_2)/2)
+mod_3 <- glm(as.factor(Result) ~ gpa+gender+extracurriculars
+             +work_experience+technical_skills+writing_skills+
+               leadership_presence+speaking_skills+
+               avg_rating, 
+             data = phase3, family = binomial(link = "logit"))
+summary(mod_3)
+est_mod3 <- format(round(summary(mod_3)$coeff[,1],2),nsmall=2)
+
+```
+
+```{r,echo=FALSE}
+knitr::kable(est_mod3, caption = "Summary of Model 5: Estimates") #table 5
+```
+### Conclusion
+As a result, the final hiring process seems to be fair on other factors except for gender inequality. This may be one of the reasons that among the current employees, the gender is not balanced. The HR team should think about this issue and see if there are things that could be improved for this final hiring process.
+
+## Discussion
+
+The five research questions in this report mainly focus on the three big problems, which are about the salary, promotion, and hiring process for Black Saber Software. After analyzing the five specific questions, there are several conclusions can be made. First, the salary is not allocated equally among the positions, teams, and gender. There is a huge gap between the salary for positions that include and below manager and the salary for the directors and vice president. Employees in some of the teams tend to get higher wages than in other teams. Also, among all the positions in the company, males always get a higher median salary than females in the same position. Second, the salary raise and promotion process are fair in general based on leadership, but there still have potential gender inequality issues. It seems like none of these processes have a consideration of productivity, which might be a problem. 
+
+Then, based on the AI automated hiring pipeline result, the AI system did a great job to auto-grade the candidates pre-recorded video and other application materials. However, factors such as leadership presence tend to give higher ratings for male candidates. The probability for a candidate to pass a hiring stage seems to be lower if the candidate is a female. After phase 3, the critical factors such as GPA, work experience, and interview ratings are considered, but almost 80% of candidates that are hired are male.  
+
+Overall, all the three processes in the company did a great job, but some issues should still be fixed. The biggest problem is gender inequality and unbalanced allocation among the teams. I would suggest the company adjust its payroll system since it is obviously not fair when males get a higher salary than females when they are in the same position. The promotion opportunities should also be allocated equally among different gender groups and teams. The hiring process, especially the AI pipeline is good, but still should be improved.
+
+### Strengths and limitations
+
+One of the strengths of this report is that it provides some overall information for the salary, promotion, and hiring process. For example, we can have a better idea on how the salary in the company is allocated among different positions and gender. The issues like gender inequality is hard to find out without doing data analysis. Also, we provide a basic check on the AI selection pipeline for hiring. The figures and tables in this report give clear visualizations for these data, and it is easy to catch some trend and issues from those plots. Hopefully this report can provides some helpful information for the company to find and figure out some issues.
+
+There are still some limitations for these report. Since I only have the data on the current employees, I cannot analysis the salary raise and promotion process from a long term period. Because the employees in a company are unstable, the result I got from the current data may change over time. Also, the sample size for the hiring data is relatively small, especially for phase 3 and the final hire data. Thus, it is impossible for the models I use to provide a precise conclusion. There also can be some other factors that I did not mention when I do the analysis. For instance, the promotion can also related with the time spent in the company and how much work experience they have. Some of these issues may require a more targeted research in the future.
+ 
+\newpage
+# Consultant information
+## Consultant profile
+
+**Peiyu Li**. Peiyu is a junior consultant with Mochi Group. She specializes in data visualization and reproducible analysis. Peiyu earned her Bachelor of Science, Specialist in Statistics Methods and Practice, from the University of Toronto in 2022.
+
+## Code of ethical conduct
+
+* Our company uses appropriate methodology without prejudice to analyze data.  
+  
+* We protect and respect the rights of clients and their employees.  
+   
+* We execute and practice with respect and caution in compliance with client's specifications.  
+  
+* We take caution to avoid using any data summary that is inaccurate. Make every effort to thoroughly reveal all conclusions and shortcomings related to the evidence, the study, and the findings.  
+  
+* We take responsibility for work and provide factual and trustworthy knowledge on practices in every professional evaluation or appraisal.
+
